@@ -1,0 +1,22 @@
+name: Compilar NTFS Suite v3.0
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet restore NTFSSuite.csproj
+      - run: dotnet publish NTFSSuite.csproj -c Release -r win-x64 --self-contained false -o publish
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NTFS-Suite-v3.0-Portable
+          path: publish
+          if-no-files-found: error
