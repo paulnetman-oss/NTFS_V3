@@ -1,0 +1,8 @@
+namespace NTFSSuite;
+public sealed class MainForm:Form
+{
+ Panel host=new();
+ public MainForm(){Text="NTFS Suite v3.0";Width=1160;Height=680;StartPosition=FormStartPosition.CenterScreen;Font=new Font("Segoe UI",9);var menu=new Panel{Dock=DockStyle.Left,Width=220,BackColor=Color.FromArgb(31,78,121)};host.Dock=DockStyle.Fill;Controls.Add(host);Controls.Add(menu);var title=new Label{Text="NTFS SUITE",ForeColor=Color.White,Font=new Font("Segoe UI",17,FontStyle.Bold),Left=25,Top=25,AutoSize=true};menu.Controls.Add(title);int y=90;Add(menu,"Generar matriz",ref y,()=>Show(new PlaceholderPanel("Generador de matriz","Este módulo queda reservado para usar el catálogo de combinaciones aprobado. La generación no se habilita hasta terminar de clasificar las ACL reales.")));Add(menu,"Analizar ACL",ref y,()=>Show(new AnalyzerPanel()));Add(menu,"Comparar matrices",ref y,()=>Show(new ComparatorPanel()));Add(menu,"Planear cambios",ref y,()=>Show(new PlannerPanel()));Add(menu,"Aplicar permisos",ref y,()=>Show(new PlaceholderPanel("Aplicador de permisos","Módulo deliberadamente bloqueado en v3.0. Primero deben aprobarse el catálogo ACL, el respaldo, la verificación y la reversión.")));Show(new AnalyzerPanel());}
+ void Add(Panel p,string text,ref int y,Action action){var b=new Button{Text=text,Left=15,Top=y,Width=190,Height=42,FlatStyle=FlatStyle.Flat,BackColor=Color.FromArgb(45,95,135),ForeColor=Color.White};b.Click+=(s,e)=>action();p.Controls.Add(b);y+=52;}
+ void Show(Control c){host.Controls.Clear();host.Controls.Add(c);}
+}
