@@ -6,424 +6,119 @@ namespace NTFSSuite;
 
 public static class SidOriginAnalyzer
 {
-    public static void Run(
-        string template,
-        string root,
-        int levels,
-        string output,
-        Action<int, string>? progress = null)
+    public static void Run(string template,string root,int levels,string output,Action<int,string>? progress=null)
     {
-        List<DirectoryItem> directories =
-            TemplateService.ReadDirectories(template, root, levels);
+        List<DirectoryItem> directories=TemplateService.ReadDirectories(template,root,levels);
+        var found=new Dictionary<string,List<SidOccurrence>>(StringComparer.OrdinalIgnoreCase);
+        int errors=0,done=0;
 
-        var occurrences = new Dictionary<string, List<SidOccurrence>>(
-            StringComparer.OrdinalIgnoreCase);
-        int failedAclReads = 0;
-        int completed = 0;
-
-        foreach (DirectoryItem directory in directories)
+        foreach(DirectoryItem directory in directories)
         {
-            completed++;
-            progress?.Invoke(
-                completed * 45 / Math.Max(1, directories.Count),
-                "Leyendo ACL: " + directory.RelativePath);
-
-            if (string.IsNullOrWhiteSpace(directory.FullPath) ||
-                !Directory.Exists(directory.FullPath))
-                continue;
-
+            done++;
+            progress?.Invoke(done*40/Math.Max(1,directories.Count),"Leyendo ACL: "+directory.RelativePath);
+            if(string.IsNullOrWhiteSpace(directory.FullPath)||!Directory.Exists(directory.FullPath))continue;
             DirectorySecurity security;
-            try
+            try{security=FileSystemAclExtensions.GetAccessControl(new DirectoryInfo(directory.FullPath),AccessControlSections.Access);}catch{errors++;continue;}
+            foreach(FileSystemAccessRule rule in security.GetAccessRules(true,true,typeof(SecurityIdentifier)))
             {
-                security = FileSystemAclExtensions.GetAccessControl(
-                    new DirectoryInfo(directory.FullPath),
-                    AccessControlSections.Access);
-            }
-            catch
-            {
-                failedAclReads++;
-                continue;
-            }
-
-            foreach (FileSystemAccessRule rule in security.GetAccessRules(
-                         includeExplicit: true,
-                         includeInherited: true,
-                         targetType: typeof(SecurityIdentifier)))
-            {
-                if (rule.IdentityReference is not SecurityIdentifier sid)
-                    continue;
-
-                if (!occurrences.TryGetValue(sid.Value, out List<SidOccurrence>? list))
-                {
-                    list = new List<SidOccurrence>();
-                    occurrences.Add(sid.Value, list);
-                }
-
-                list.Add(new SidOccurrence
-                {
-                    Sid = sid.Value,
-                    Path = directory.RelativePath,
-                    PhysicalPath = directory.FullPath,
-                    AccessType = rule.AccessControlType.ToString(),
-                    Rights = NormalizeRights(rule.FileSystemRights),
-                    Scope = Scope(rule),
-                    Inherited = rule.IsInherited
-                });
+                if(rule.IdentityReference is not SecurityIdentifier sid)continue;
+                if(!found.TryGetValue(sid.Value,out List<SidOccurrence>? list)){list=new();found.Add(sid.Value,list);}
+                list.Add(new SidOccurrence{Sid=sid.Value,Path=directory.RelativePath,PhysicalPath=directory.FullPath,AccessType=rule.AccessControlType.ToString(),Rights=(rule.FileSystemRights&~FileSystemRights.Synchronize).ToString(),Scope=Scope(rule),Inherited=rule.IsInherited});
             }
         }
 
-        var records = new List<SidOriginRecord>();
-        using var resolver = new SidOriginResolver();
-        int index = 0;
-
-        foreach ((string sidText, List<SidOccurrence> sidOccurrences) in occurrences)
+        var records=new List<SidOriginRecord>();
+        using var resolver=new SidOriginResolver();
+        int index=0;
+        foreach(var pair in found)
         {
             index++;
-            progress?.Invoke(
-                45 + index * 45 / Math.Max(1, occurrences.Count),
-                "Resolviendo SID: " + sidText);
-
-            var sid = new SecurityIdentifier(sidText);
-            SidOriginRecord record = resolver.Resolve(sid);
-            record.Occurrences = sidOccurrences;
-            record.Frequency = sidOccurrences.Count;
-            record.DistinctPaths = sidOccurrences
-                .Select(value => value.Path)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Count();
+            progress?.Invoke(40+index*50/Math.Max(1,found.Count),"Investigando SID: "+pair.Key);
+            var record=resolver.Resolve(new SecurityIdentifier(pair.Key));
+            record.Occurrences=pair.Value;
+            record.Frequency=pair.Value.Count;
+            record.DistinctPaths=pair.Value.Select(x=>x.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            SidForensicAnalyzer.Enrich(record,resolver);
             records.Add(record);
         }
 
-        progress?.Invoke(92, "Generando libro de origen de SID");
-        WriteReport(
-            output,
-            records.OrderBy(value => OriginOrder(value.Origin))
-                .ThenByDescending(value => value.Frequency)
-                .ThenBy(value => value.Sid, StringComparer.OrdinalIgnoreCase)
-                .ToList(),
-            directories,
-            failedAclReads);
-        progress?.Invoke(100, "Finalizado");
+        progress?.Invoke(94,"Generando investigación forense");
+        Write(output,records.OrderBy(x=>Order(x.Origin)).ThenByDescending(x=>x.Frequency).ToList(),directories,errors);
+        progress?.Invoke(100,"Finalizado");
     }
 
-    private static int OriginOrder(string origin) => origin switch
+    private static string Scope(FileSystemAccessRule rule)=>
+        rule.InheritanceFlags==(InheritanceFlags.ContainerInherit|InheritanceFlags.ObjectInherit)&&rule.PropagationFlags==PropagationFlags.None
+            ?"Esta carpeta, subcarpetas y archivos"
+            :rule.InheritanceFlags==InheritanceFlags.None?"Solo esta carpeta":rule.InheritanceFlags+" / "+rule.PropagationFlags;
+
+    private static int Order(string origin)=>origin switch{"ACTIVE DIRECTORY ACTUAL"=>0,"IDENTIDAD INTEGRADA DE WINDOWS"=>1,"CUENTA O GRUPO LOCAL"=>2,"SID HISTORY"=>3,"DOMINIO EXTERNO O CONTEXTO NO CONSULTADO"=>4,"DOMINIO ACTUAL, OBJETO NO ENCONTRADO"=>5,_=>6};
+
+    private static void Write(string output,List<SidOriginRecord> records,List<DirectoryItem> dirs,int errors)
     {
-        "ACTIVE DIRECTORY ACTUAL" => 0,
-        "IDENTIDAD INTEGRADA DE WINDOWS" => 1,
-        "CUENTA O GRUPO LOCAL" => 2,
-        "SID HISTORY" => 3,
-        "DOMINIO EXTERNO O CONTEXTO NO CONSULTADO" => 4,
-        "DOMINIO ACTUAL, OBJETO NO ENCONTRADO" => 5,
-        _ => 6
-    };
-
-    private static string NormalizeRights(FileSystemRights rights) =>
-        (rights & ~FileSystemRights.Synchronize).ToString();
-
-    private static string Scope(FileSystemAccessRule rule)
-    {
-        if (rule.InheritanceFlags ==
-                (InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit) &&
-            rule.PropagationFlags == PropagationFlags.None)
-            return "Esta carpeta, subcarpetas y archivos";
-
-        if (rule.InheritanceFlags == InheritanceFlags.None)
-            return "Solo esta carpeta";
-
-        return rule.InheritanceFlags + " / " + rule.PropagationFlags;
+        using var wb=new XLWorkbook();
+        Summary(wb,records,dirs,errors);
+        Investigation(wb,records);
+        Origins(wb,records);
+        Affected(wb,records);
+        Actions(wb,records);
+        NeighborSheet(wb,records);
+        Filtered(wb,"CANDIDATOS HUÉRFANOS",records.Where(x=>x.Origin is "DOMINIO ACTUAL, OBJETO NO ENCONTRADO" or "NO IDENTIFICADO"));
+        Filtered(wb,"SID HISTORY",records.Where(x=>x.Origin=="SID HISTORY"));
+        Routes(wb,dirs);
+        wb.SaveAs(output);
     }
 
-    private static void WriteReport(
-        string output,
-        List<SidOriginRecord> records,
-        List<DirectoryItem> directories,
-        int failedAclReads)
+    private static void Summary(XLWorkbook wb,List<SidOriginRecord> r,List<DirectoryItem> d,int errors)
     {
-        using var workbook = new XLWorkbook();
-
-        WriteSummary(workbook, records, directories, failedAclReads);
-        WriteOrigins(workbook, records);
-        WriteAffectedPaths(workbook, records);
-        WriteActions(workbook, records);
-        WriteOrphans(workbook, records);
-        WriteHistory(workbook, records);
-        WriteRoutes(workbook, directories);
-
-        workbook.SaveAs(output);
+        var s=wb.AddWorksheet("RESUMEN SID");Header(s,new[]{"Concepto","Cantidad"});
+        object[,] rows={{"SID distintos",r.Count},{"AD actual",r.Count(x=>x.Origin=="ACTIVE DIRECTORY ACTUAL")},{"SID History",r.Count(x=>x.Origin=="SID HISTORY")},{"Integrados",r.Count(x=>x.Origin=="IDENTIDAD INTEGRADA DE WINDOWS")},{"Locales",r.Count(x=>x.Origin=="CUENTA O GRUPO LOCAL")},{"Posibles huérfanos",r.Count(x=>x.Origin=="DOMINIO ACTUAL, OBJETO NO ENCONTRADO")},{"No identificados",r.Count(x=>x.Origin=="NO IDENTIFICADO")},{"Entradas ACL",r.Sum(x=>x.Frequency)},{"Directorios resueltos",d.Count(x=>x.FullPath.Length>0)},{"Errores ACL",errors}};
+        for(int i=0;i<rows.GetLength(0);i++)Put(s,i+2,new[]{rows[i,0],rows[i,1]});Finish(s,2);
     }
 
-    private static void WriteSummary(
-        XLWorkbook workbook,
-        List<SidOriginRecord> records,
-        List<DirectoryItem> directories,
-        int failedAclReads)
+    private static void Investigation(XLWorkbook wb,IEnumerable<SidOriginRecord> records)
     {
-        var sheet = workbook.AddWorksheet("RESUMEN SID");
-        Header(sheet, new[] { "Concepto", "Cantidad" });
-
-        object[,] rows =
+        var s=wb.AddWorksheet("INVESTIGACIÓN FORENSE SID");Header(s,new[]{"SID","RID","Origen comprobado","Origen probable","Tipo comprobado","Tipo probable","Confianza","Base de confianza","Frecuencia","Rutas distintas","Áreas principales","Permisos encontrados","Resumen ACL","Vecinos RID vigentes","Estado","Acción sugerida","Riesgo","Evidencia"});int row=2;
+        foreach(var x in records)
         {
-            { "SID distintos encontrados", records.Count },
-            { "Active Directory actual", records.Count(x => x.Origin == "ACTIVE DIRECTORY ACTUAL") },
-            { "SID History", records.Count(x => x.Origin == "SID HISTORY") },
-            { "Identidades integradas", records.Count(x => x.Origin == "IDENTIDAD INTEGRADA DE WINDOWS") },
-            { "Cuentas o grupos locales", records.Count(x => x.Origin == "CUENTA O GRUPO LOCAL") },
-            { "Dominio externo o contexto no consultado", records.Count(x => x.Origin == "DOMINIO EXTERNO O CONTEXTO NO CONSULTADO") },
-            { "Posibles SID huérfanos del dominio actual", records.Count(x => x.Origin == "DOMINIO ACTUAL, OBJETO NO ENCONTRADO") },
-            { "SID no identificados", records.Count(x => x.Origin == "NO IDENTIFICADO") },
-            { "Entradas ACL analizadas", records.Sum(x => x.Frequency) },
-            { "Directorios documentados", directories.Count },
-            { "Directorios resueltos", directories.Count(x => x.FullPath.Length > 0) },
-            { "Errores al leer ACL", failedAclReads }
-        };
-
-        for (int row = 0; row < rows.GetLength(0); row++)
-        {
-            sheet.Cell(row + 2, 1).Value = XLCellValue.FromObject(rows[row, 0]);
-            sheet.Cell(row + 2, 2).Value = XLCellValue.FromObject(rows[row, 1]);
+            Put(s,row,new object[]{x.Sid,x.Rid,x.Origin,x.ProbableOrigin,x.PrincipalType,x.ProbableType,x.Confidence,x.ConfidenceBasis,x.Frequency,x.DistinctPaths,x.MainAreas,x.RightsSummary,x.AccessTypesSummary,x.NeighborSummary,x.Status,x.Recommendation,x.Risk,x.Evidence});
+            s.Row(row).Style.Fill.BackgroundColor=XLColor.FromHtml(x.Confidence=="ALTA"?"#E2F0D9":x.Confidence=="MEDIA"?"#FFF2CC":"#FCE4D6");row++;
         }
-        sheet.Columns().AdjustToContents();
+        Finish(s,18);
     }
 
-    private static void WriteOrigins(
-        XLWorkbook workbook,
-        IEnumerable<SidOriginRecord> records)
+    private static void Origins(XLWorkbook wb,IEnumerable<SidOriginRecord> records)
     {
-        var sheet = workbook.AddWorksheet("ORIGEN SID");
-        Header(sheet, new[]
-        {
-            "SID", "Frecuencia", "Rutas distintas", "Prefijo de dominio SID",
-            "Origen", "Coincidencia", "Cuenta actual", "DisplayName", "Tipo",
-            "SID actual del objeto", "SID del dominio actual", "Estado",
-            "Recomendación", "Riesgo", "Evidencia"
-        });
-
-        int row = 2;
-        foreach (SidOriginRecord record in records)
-        {
-            Put(sheet, row, new object[]
-            {
-                record.Sid,
-                record.Frequency,
-                record.DistinctPaths,
-                record.SidDomainPrefix,
-                record.Origin,
-                record.MatchedBy,
-                record.AccountName,
-                record.DisplayName,
-                record.PrincipalType,
-                record.CurrentObjectSid,
-                record.CurrentDomainSid,
-                record.Status,
-                record.Recommendation,
-                record.Risk,
-                record.Evidence
-            });
-            sheet.Row(row).Style.Fill.BackgroundColor =
-                XLColor.FromHtml(OriginColor(record.Origin));
-            row++;
-        }
-
-        Finish(sheet, 15);
+        var s=wb.AddWorksheet("ORIGEN SID");Header(s,new[]{"SID","Frecuencia","Rutas","Origen","Coincidencia","Cuenta","DisplayName","Tipo","SID actual","Estado","Recomendación","Riesgo","Evidencia"});int row=2;
+        foreach(var x in records)Put(s,row++,new object[]{x.Sid,x.Frequency,x.DistinctPaths,x.Origin,x.MatchedBy,x.AccountName,x.DisplayName,x.PrincipalType,x.CurrentObjectSid,x.Status,x.Recommendation,x.Risk,x.Evidence});Finish(s,13);
     }
 
-    private static void WriteAffectedPaths(
-        XLWorkbook workbook,
-        IEnumerable<SidOriginRecord> records)
+    private static void Affected(XLWorkbook wb,IEnumerable<SidOriginRecord> records)
     {
-        var sheet = workbook.AddWorksheet("RUTAS AFECTADAS");
-        Header(sheet, new[]
-        {
-            "SID", "Origen", "Cuenta", "DisplayName", "Ruta documentada",
-            "Ruta física", "Permitir/Denegar", "Derechos", "Se aplica a", "Heredado"
-        });
-
-        int row = 2;
-        foreach (SidOriginRecord record in records)
-        {
-            foreach (SidOccurrence occurrence in record.Occurrences)
-            {
-                Put(sheet, row++, new object[]
-                {
-                    record.Sid,
-                    record.Origin,
-                    record.AccountName,
-                    record.DisplayName,
-                    occurrence.Path,
-                    occurrence.PhysicalPath,
-                    occurrence.AccessType,
-                    occurrence.Rights,
-                    occurrence.Scope,
-                    occurrence.Inherited ? "Sí" : "No"
-                });
-            }
-        }
-
-        Finish(sheet, 10);
+        var s=wb.AddWorksheet("RUTAS AFECTADAS");Header(s,new[]{"SID","Origen","Tipo probable","Ruta documentada","Ruta física","Allow/Deny","Derechos","Alcance","Heredado"});int row=2;
+        foreach(var x in records)foreach(var o in x.Occurrences)Put(s,row++,new object[]{x.Sid,x.Origin,x.ProbableType,o.Path,o.PhysicalPath,o.AccessType,o.Rights,o.Scope,o.Inherited?"Sí":"No"});Finish(s,9);
     }
 
-    private static void WriteActions(
-        XLWorkbook workbook,
-        IEnumerable<SidOriginRecord> records)
+    private static void Actions(XLWorkbook wb,IEnumerable<SidOriginRecord> records)
     {
-        var sheet = workbook.AddWorksheet("ACCIONES PROPUESTAS");
-        Header(sheet, new[]
-        {
-            "SID", "Origen", "Cuenta/Identidad", "Estado", "Frecuencia",
-            "Rutas distintas", "Acción sugerida", "Riesgo", "Justificación",
-            "Aprobación del cliente", "Resultado de revisión"
-        });
-
-        int row = 2;
-        foreach (SidOriginRecord record in records)
-        {
-            Put(sheet, row, new object[]
-            {
-                record.Sid,
-                record.Origin,
-                string.IsNullOrWhiteSpace(record.DisplayName)
-                    ? record.AccountName
-                    : record.DisplayName,
-                record.Status,
-                record.Frequency,
-                record.DistinctPaths,
-                record.Recommendation,
-                record.Risk,
-                record.Evidence,
-                "PENDIENTE",
-                ""
-            });
-            sheet.Row(row).Style.Fill.BackgroundColor =
-                XLColor.FromHtml(RiskColor(record.Risk));
-            row++;
-        }
-
-        Finish(sheet, 11);
+        var s=wb.AddWorksheet("ACCIONES PROPUESTAS");Header(s,new[]{"SID","Origen probable","Tipo probable","Confianza","Frecuencia","Rutas","Acción sugerida","Riesgo","Justificación","Aprobación cliente","Resultado revisión"});int row=2;
+        foreach(var x in records){Put(s,row,new object[]{x.Sid,x.ProbableOrigin,x.ProbableType,x.Confidence,x.Frequency,x.DistinctPaths,x.Recommendation,x.Risk,x.ConfidenceBasis+" "+x.Evidence,"PENDIENTE",""});s.Row(row).Style.Fill.BackgroundColor=XLColor.FromHtml(x.Risk=="BAJO"?"#E2F0D9":x.Risk=="MEDIO"?"#FFF2CC":"#F4CCCC");row++;}Finish(s,11);
     }
 
-    private static void WriteOrphans(
-        XLWorkbook workbook,
-        IEnumerable<SidOriginRecord> records)
+    private static void NeighborSheet(XLWorkbook wb,IEnumerable<SidOriginRecord> records)
     {
-        WriteOrigins(
-            workbook,
-            records.Where(x =>
-                x.Origin == "DOMINIO ACTUAL, OBJETO NO ENCONTRADO" ||
-                x.Origin == "NO IDENTIFICADO"),
-            "CANDIDATOS HUÉRFANOS");
+        var s=wb.AddWorksheet("CONTEXTO RID");Header(s,new[]{"SID investigado","RID investigado","RID vecino","SID vecino","Existe","Cuenta vecina","DisplayName vecino","Tipo vecino","Nota"});int row=2;
+        foreach(var x in records)foreach(var n in x.Neighbors)Put(s,row++,new object[]{x.Sid,x.Rid,n.Rid,n.Sid,n.Exists?"Sí":"No",n.AccountName,n.DisplayName,n.PrincipalType,"La vecindad RID es contexto, no prueba de identidad histórica."});Finish(s,9);
     }
 
-    private static void WriteHistory(
-        XLWorkbook workbook,
-        IEnumerable<SidOriginRecord> records)
+    private static void Filtered(XLWorkbook wb,string name,IEnumerable<SidOriginRecord> records)
     {
-        WriteOrigins(
-            workbook,
-            records.Where(x => x.Origin == "SID HISTORY"),
-            "SID HISTORY");
+        var s=wb.AddWorksheet(name);Header(s,new[]{"SID","RID","Origen probable","Tipo probable","Confianza","Frecuencia","Rutas","Áreas principales","Permisos","Recomendación","Riesgo","Evidencia"});int row=2;
+        foreach(var x in records)Put(s,row++,new object[]{x.Sid,x.Rid,x.ProbableOrigin,x.ProbableType,x.Confidence,x.Frequency,x.DistinctPaths,x.MainAreas,x.RightsSummary,x.Recommendation,x.Risk,x.ConfidenceBasis});Finish(s,12);
     }
 
-    private static void WriteOrigins(
-        XLWorkbook workbook,
-        IEnumerable<SidOriginRecord> records,
-        string sheetName)
-    {
-        var sheet = workbook.AddWorksheet(sheetName);
-        Header(sheet, new[]
-        {
-            "SID encontrado", "Cuenta actual", "DisplayName", "Tipo",
-            "SID actual", "Estado", "Frecuencia", "Rutas distintas",
-            "Recomendación", "Riesgo", "Evidencia"
-        });
-
-        int row = 2;
-        foreach (SidOriginRecord record in records)
-        {
-            Put(sheet, row++, new object[]
-            {
-                record.Sid,
-                record.AccountName,
-                record.DisplayName,
-                record.PrincipalType,
-                record.CurrentObjectSid,
-                record.Status,
-                record.Frequency,
-                record.DistinctPaths,
-                record.Recommendation,
-                record.Risk,
-                record.Evidence
-            });
-        }
-        Finish(sheet, 11);
-    }
-
-    private static void WriteRoutes(
-        XLWorkbook workbook,
-        IEnumerable<DirectoryItem> directories)
-    {
-        var sheet = workbook.AddWorksheet("RUTAS ANALIZADAS");
-        Header(sheet, new[] { "Fila", "Ruta documentada", "Ruta física", "Estado" });
-
-        int row = 2;
-        foreach (DirectoryItem directory in directories)
-        {
-            Put(sheet, row++, new object[]
-            {
-                directory.Row,
-                directory.RelativePath,
-                directory.FullPath,
-                directory.Resolution
-            });
-        }
-        Finish(sheet, 4);
-    }
-
-    private static string OriginColor(string origin) => origin switch
-    {
-        "ACTIVE DIRECTORY ACTUAL" => "#E2F0D9",
-        "IDENTIDAD INTEGRADA DE WINDOWS" => "#D9EAF7",
-        "CUENTA O GRUPO LOCAL" => "#FFF2CC",
-        "SID HISTORY" => "#E4DFEC",
-        "DOMINIO EXTERNO O CONTEXTO NO CONSULTADO" => "#FCE4D6",
-        "DOMINIO ACTUAL, OBJETO NO ENCONTRADO" => "#F4CCCC",
-        _ => "#F4CCCC"
-    };
-
-    private static string RiskColor(string risk) => risk switch
-    {
-        "BAJO" => "#E2F0D9",
-        "MEDIO" => "#FFF2CC",
-        "ALTO" => "#F4CCCC",
-        _ => "#FFFFFF"
-    };
-
-    private static void Header(IXLWorksheet sheet, string[] headers)
-    {
-        for (int index = 0; index < headers.Length; index++)
-        {
-            IXLCell cell = sheet.Cell(1, index + 1);
-            cell.Value = headers[index];
-            cell.Style.Font.Bold = true;
-            cell.Style.Font.FontColor = XLColor.White;
-            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1F4E78");
-        }
-    }
-
-    private static void Put(IXLWorksheet sheet, int row, object[] values)
-    {
-        for (int index = 0; index < values.Length; index++)
-            sheet.Cell(row, index + 1).Value =
-                XLCellValue.FromObject(values[index]);
-    }
-
-    private static void Finish(IXLWorksheet sheet, int columns)
-    {
-        sheet.SheetView.FreezeRows(1);
-        if (sheet.LastRowUsed() is not null)
-            sheet.Range(1, 1, sheet.LastRowUsed().RowNumber(), columns)
-                .SetAutoFilter();
-        sheet.Columns(1, columns).AdjustToContents(12, 85);
-        sheet.Rows().Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
-        sheet.Rows().Style.Alignment.WrapText = true;
-    }
+    private static void Routes(XLWorkbook wb,IEnumerable<DirectoryItem> dirs){var s=wb.AddWorksheet("RUTAS ANALIZADAS");Header(s,new[]{"Fila","Ruta documentada","Ruta física","Estado"});int row=2;foreach(var d in dirs)Put(s,row++,new object[]{d.Row,d.RelativePath,d.FullPath,d.Resolution});Finish(s,4);}
+    private static void Header(IXLWorksheet s,string[] h){for(int i=0;i<h.Length;i++){var c=s.Cell(1,i+1);c.Value=h[i];c.Style.Font.Bold=true;c.Style.Font.FontColor=XLColor.White;c.Style.Fill.BackgroundColor=XLColor.FromHtml("#1F4E78");}}
+    private static void Put(IXLWorksheet s,int row,object[] values){for(int i=0;i<values.Length;i++)s.Cell(row,i+1).Value=XLCellValue.FromObject(values[i]);}
+    private static void Finish(IXLWorksheet s,int cols){s.SheetView.FreezeRows(1);if(s.LastRowUsed()!=null)s.Range(1,1,s.LastRowUsed().RowNumber(),cols).SetAutoFilter();s.Columns(1,cols).AdjustToContents(12,85);s.Rows().Style.Alignment.WrapText=true;s.Rows().Style.Alignment.Vertical=XLAlignmentVerticalValues.Top;}
 }
