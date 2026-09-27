@@ -1,103 +1,21 @@
 using System.DirectoryServices;
 using System.Security.Principal;
-
 namespace NTFSSuite;
-
 public sealed class PrincipalResolver
 {
-    private readonly Dictionary<string, PrincipalInfo> cache =
-        new(StringComparer.OrdinalIgnoreCase);
-
-    public PrincipalInfo Resolve(SecurityIdentifier sid)
-    {
-        if (cache.TryGetValue(sid.Value, out PrincipalInfo? cached))
-            return cached;
-
-        var info = new PrincipalInfo { Sid = sid.Value };
-
-        try
-        {
-            info.AccountName = ((NTAccount)sid.Translate(typeof(NTAccount))).Value;
-            info.IsResolved = true;
-            info.ResolutionMethod = "Traducción SID a cuenta";
-        }
-        catch
-        {
-            info.AccountName = sid.Value;
-            info.IsResolved = false;
-            info.ResolutionMethod = "SID no traducido";
-        }
-
-        try
-        {
-            using var entry = new DirectoryEntry("LDAP://<SID=" + sid.Value + ">");
-            entry.RefreshCache(new[] { "displayName", "name", "objectClass", "sAMAccountName" });
-
-            info.DisplayName = Get(entry, "displayName");
-            if (string.IsNullOrWhiteSpace(info.DisplayName))
-                info.DisplayName = Get(entry, "name");
-
-            string sam = Get(entry, "sAMAccountName");
-            if (!string.IsNullOrWhiteSpace(sam) &&
-                (string.IsNullOrWhiteSpace(info.AccountName) || info.AccountName == sid.Value))
-                info.AccountName = sam;
-
-            info.PrincipalType = GetPrincipalType(entry);
-            info.IsResolved = true;
-            info.ResolutionMethod = "Active Directory por SID";
-        }
-        catch
-        {
-            if (string.IsNullOrWhiteSpace(info.DisplayName) && info.IsResolved)
-                info.DisplayName = AccountLeaf(info.AccountName);
-
-            if (string.IsNullOrWhiteSpace(info.PrincipalType))
-                info.PrincipalType = InferType(info.AccountName, sid);
-        }
-
-        if (string.IsNullOrWhiteSpace(info.DisplayName))
-            info.DisplayName = info.IsResolved ? AccountLeaf(info.AccountName) : "SID NO RESUELTO";
-
-        if (string.IsNullOrWhiteSpace(info.PrincipalType))
-            info.PrincipalType = info.IsResolved ? "Cuenta" : "Desconocido";
-
-        cache[sid.Value] = info;
-        return info;
-    }
-
-    private static string Get(DirectoryEntry entry, string property)
-    {
-        object? value = entry.Properties[property].Value;
-        return value is null ? "" : Convert.ToString(value) ?? "";
-    }
-
-    private static string GetPrincipalType(DirectoryEntry entry)
-    {
-        foreach (object value in entry.Properties["objectClass"])
-        {
-            string objectClass = Convert.ToString(value) ?? "";
-            if (objectClass.Equals("group", StringComparison.OrdinalIgnoreCase))
-                return "Grupo";
-            if (objectClass.Equals("computer", StringComparison.OrdinalIgnoreCase))
-                return "Equipo";
-            if (objectClass.Equals("user", StringComparison.OrdinalIgnoreCase))
-                return "Usuario";
-        }
-        return "Objeto de Active Directory";
-    }
-
-    private static string InferType(string account, SecurityIdentifier sid)
-    {
-        if (sid.IsWellKnown(WellKnownSidType.LocalSystemSid)) return "Identidad integrada";
-        if (account.StartsWith("BUILTIN\\", StringComparison.OrdinalIgnoreCase)) return "Grupo integrado";
-        if (account.StartsWith("NT AUTHORITY\\", StringComparison.OrdinalIgnoreCase)) return "Identidad integrada";
-        if (account.EndsWith("$", StringComparison.OrdinalIgnoreCase)) return "Equipo";
-        return "Cuenta";
-    }
-
-    private static string AccountLeaf(string account)
-    {
-        int separator = account.LastIndexOf('\\');
-        return separator >= 0 ? account[(separator + 1)..] : account;
-    }
+ private readonly Dictionary<string,PrincipalInfo> cache=new(StringComparer.OrdinalIgnoreCase);
+ public PrincipalInfo Resolve(SecurityIdentifier sid)
+ {
+  if(cache.TryGetValue(sid.Value,out var old))return old;
+  var p=new PrincipalInfo{Sid=sid.Value,AccountName=sid.Value,DisplayName="SID NO RESUELTO",PrincipalType="Desconocido",ResolutionMethod="SID no traducido"};
+  try{string a=((NTAccount)sid.Translate(typeof(NTAccount))).Value;if(!a.StartsWith("S-1-",StringComparison.OrdinalIgnoreCase)){p.AccountName=a;p.DisplayName=Leaf(a);p.PrincipalType=Infer(a);p.IsResolved=true;p.ResolutionMethod="Traducción SID a cuenta";}}catch{}
+  try{using var e=new DirectoryEntry("LDAP://<SID="+sid.Value+">");e.RefreshCache(new[]{"displayName","name","sAMAccountName","objectClass"});string display=Get(e,"displayName");if(string.IsNullOrWhiteSpace(display))display=Get(e,"name");string sam=Get(e,"sAMAccountName");if(!string.IsNullOrWhiteSpace(sam)){string dom=Domain(p.AccountName);p.AccountName=string.IsNullOrWhiteSpace(dom)?sam:dom+"\\"+sam;}p.DisplayName=display;p.PrincipalType=Type(e);p.IsResolved=true;p.ResolutionMethod="Active Directory por SID";}catch{}
+  if(!p.IsResolved){p.AccountName=sid.Value;p.DisplayName="SID NO RESUELTO";p.PrincipalType="Desconocido";}
+  cache[sid.Value]=p;return p;
+ }
+ static string Get(DirectoryEntry e,string n)=>Convert.ToString(e.Properties[n].Value)??"";
+ static string Type(DirectoryEntry e){foreach(object x in e.Properties["objectClass"]){string s=Convert.ToString(x)??"";if(s.Equals("group",StringComparison.OrdinalIgnoreCase))return "Grupo";if(s.Equals("computer",StringComparison.OrdinalIgnoreCase))return "Equipo";if(s.Equals("user",StringComparison.OrdinalIgnoreCase))return "Usuario";}return "Cuenta";}
+ static string Infer(string a)=>a.StartsWith("BUILTIN\\",StringComparison.OrdinalIgnoreCase)?"Grupo integrado":a.StartsWith("NT AUTHORITY\\",StringComparison.OrdinalIgnoreCase)?"Identidad integrada":a.EndsWith("$")?"Equipo":"Cuenta";
+ static string Leaf(string a){int i=a.LastIndexOf('\\');return i>=0?a[(i+1)..]:a;}
+ static string Domain(string a){int i=a.IndexOf('\\');return i>0?a[..i]:"";}
 }
