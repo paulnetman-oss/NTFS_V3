@@ -1,0 +1,8 @@
+Agrega dentro de <Project>, fuera de los PropertyGroup existentes:
+
+<ItemGroup>
+  <None Update="CatalogoACL.json">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+  </None>
+</ItemGroup>

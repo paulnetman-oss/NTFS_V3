@@ -1,0 +1,264 @@
+{
+  "version": "3.4",
+  "source": "Combinaciones.xlsx / COMBINACIONES DETECTADAS / columna K",
+  "rules": [
+    {
+      "id": "ACL001",
+      "accessType": "Allow",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": true,
+      "rights": "ReadAndExecute",
+      "value": "L"
+    },
+    {
+      "id": "ACL002",
+      "accessType": "Deny",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "ReadAndExecute",
+      "value": "N"
+    },
+    {
+      "id": "ACL003",
+      "accessType": "Deny",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": true,
+      "rights": "ReadAndExecute",
+      "value": "N"
+    },
+    {
+      "id": "ACL004",
+      "accessType": "Allow",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": true,
+      "rights": "DeleteSubdirectoriesAndFiles, Modify, ChangePermissions, TakeOwnership",
+      "value": "LEM"
+    },
+    {
+      "id": "ACL005",
+      "accessType": "Allow",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "ReadAndExecute",
+      "value": "L"
+    },
+    {
+      "id": "ACL006",
+      "accessType": "Deny",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": true,
+      "rights": "DeleteSubdirectoriesAndFiles, Modify, ChangePermissions, TakeOwnership",
+      "value": "N"
+    },
+    {
+      "id": "ACL007",
+      "accessType": "Allow",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "DeleteSubdirectoriesAndFiles, Modify, ChangePermissions, TakeOwnership",
+      "value": "LEM"
+    },
+    {
+      "id": "ACL008",
+      "accessType": "Allow",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": true,
+      "rights": "Modify",
+      "value": "LEM"
+    },
+    {
+      "id": "ACL009",
+      "accessType": "Deny",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "DeleteSubdirectoriesAndFiles, Modify, ChangePermissions, TakeOwnership",
+      "value": "N"
+    },
+    {
+      "id": "ACL010",
+      "accessType": "Allow",
+      "scope": "ContainerInherit, ObjectInherit / InheritOnly",
+      "inherited": true,
+      "rights": "DeleteSubdirectoriesAndFiles, Modify, ChangePermissions, TakeOwnership",
+      "value": "H"
+    },
+    {
+      "id": "ACL011",
+      "accessType": "Deny",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "DeleteSubdirectoriesAndFiles, Write, Delete, ChangePermissions, TakeOwnership",
+      "value": "N"
+    },
+    {
+      "id": "ACL013",
+      "accessType": "Allow",
+      "scope": "Solo esta carpeta",
+      "inherited": true,
+      "rights": "DeleteSubdirectoriesAndFiles, Modify, ChangePermissions, TakeOwnership",
+      "value": "LEM"
+    },
+    {
+      "id": "ACL015",
+      "accessType": "Allow",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "Modify",
+      "value": "LEM-SE"
+    },
+    {
+      "id": "ACL016",
+      "accessType": "Deny",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": true,
+      "rights": "Modify",
+      "value": "N"
+    },
+    {
+      "id": "ACL017",
+      "accessType": "Deny",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "Write",
+      "value": "N"
+    },
+    {
+      "id": "ACL018",
+      "accessType": "Deny",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": true,
+      "rights": "DeleteSubdirectoriesAndFiles, Write, Delete, ChangePermissions, TakeOwnership",
+      "value": "N"
+    },
+    {
+      "id": "ACL019",
+      "accessType": "Allow",
+      "scope": "ContainerInherit, ObjectInherit / InheritOnly",
+      "inherited": false,
+      "rights": "DeleteSubdirectoriesAndFiles, Modify, ChangePermissions, TakeOwnership",
+      "value": "H"
+    },
+    {
+      "id": "ACL021",
+      "accessType": "Allow",
+      "scope": "ContainerInherit, ObjectInherit / InheritOnly",
+      "inherited": true,
+      "rights": "Modify",
+      "value": "LEM-SE"
+    },
+    {
+      "id": "ACL022",
+      "accessType": "Allow",
+      "scope": "Solo esta carpeta",
+      "inherited": false,
+      "rights": "ReadAndExecute",
+      "value": "L"
+    },
+    {
+      "id": "ACL024",
+      "accessType": "Allow",
+      "scope": "ContainerInherit, ObjectInherit / InheritOnly",
+      "inherited": false,
+      "rights": "ReadAndExecute",
+      "value": "H"
+    },
+    {
+      "id": "ACL025",
+      "accessType": "Allow",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "DeleteSubdirectoriesAndFiles, Write, Delete, ChangePermissions, TakeOwnership",
+      "value": "LEM"
+    },
+    {
+      "id": "ACL026",
+      "accessType": "Allow",
+      "scope": "Solo esta carpeta",
+      "inherited": false,
+      "rights": "DeleteSubdirectoriesAndFiles, Modify, ChangePermissions, TakeOwnership",
+      "value": "LEM"
+    },
+    {
+      "id": "ACL027",
+      "accessType": "Deny",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "Modify",
+      "value": "N"
+    },
+    {
+      "id": "ACL028",
+      "accessType": "Allow",
+      "scope": "ContainerInherit, ObjectInherit / NoPropagateInherit",
+      "inherited": false,
+      "rights": "Modify",
+      "value": "H"
+    },
+    {
+      "id": "ACL030",
+      "accessType": "Deny",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "CreateFiles, CreateDirectories, DeleteSubdirectoriesAndFiles, WriteAttributes, Delete, ChangePermissions, TakeOwnership",
+      "value": "N"
+    },
+    {
+      "id": "ACL031",
+      "accessType": "Deny",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "DeleteSubdirectoriesAndFiles, Write, ChangePermissions, TakeOwnership",
+      "value": "N"
+    },
+    {
+      "id": "ACL032",
+      "accessType": "Deny",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "ListDirectory, ReadExtendedAttributes, Traverse, ReadPermissions",
+      "value": "N"
+    }
+  ],
+  "removed": [
+    {
+      "id": "ACL012",
+      "accessType": "Deny",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": true,
+      "rights": "Write",
+      "value": ""
+    },
+    {
+      "id": "ACL014",
+      "accessType": "Allow",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": true,
+      "rights": "Write, ReadAndExecute",
+      "value": ""
+    },
+    {
+      "id": "ACL020",
+      "accessType": "Allow",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "Write, ReadAndExecute",
+      "value": ""
+    },
+    {
+      "id": "ACL023",
+      "accessType": "Deny",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "Write, Delete",
+      "value": ""
+    },
+    {
+      "id": "ACL029",
+      "accessType": "Allow",
+      "scope": "Esta carpeta, subcarpetas y archivos",
+      "inherited": false,
+      "rights": "Write",
+      "value": ""
+    }
+  ]
+}
